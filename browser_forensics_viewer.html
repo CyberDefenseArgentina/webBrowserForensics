@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Browser Forensics</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;700;800&display=swap');
+
+:root {
+  --bg: #0a0c0f;
+  --surface: #111418;
+  --surface2: #1a1f26;
+  --border: #2a3040;
+  --accent: #00d4ff;
+  --accent2: #ff6b35;
+  --accent3: #7fff6b;
+  --accent4: #ffcc00;
+  --text: #e0e8f0;
+  --muted: #5a6a7a;
+  --chrome: #4285f4;
+  --edge: #0078d4;
+  --firefox: #ff7139;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,212,255,0.012) 2px,rgba(0,212,255,0.012) 4px);pointer-events:none;z-index:9999;}
+
+/* HEADER */
+header{border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:12px;background:var(--surface);position:sticky;top:0;z-index:200;}
+.logo{font-family:'Syne',sans-serif;font-weight:800;font-size:17px;color:var(--accent);letter-spacing:-0.5px;text-transform:uppercase;}
+.logo span{color:var(--accent2);}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--accent3);box-shadow:0 0 8px var(--accent3);animation:pulse 2s infinite;flex-shrink:0;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+.header-stats{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;}
+.stat-badge{background:var(--surface2);border:1px solid var(--border);padding:3px 10px;border-radius:2px;font-size:10px;color:var(--muted);}
+.stat-badge strong{color:var(--accent);}
+
+/* LAYOUT */
+.main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 53px);}
+
+/* SIDEBAR */
+.sidebar{border-right:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;overflow:hidden;}
+.sidebar-section{padding:12px;border-bottom:1px solid var(--border);}
+.sidebar-label{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin-bottom:8px;}
+.dropzone{border:1px dashed var(--border);border-radius:3px;padding:16px 12px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface2);}
+.dropzone:hover,.dropzone.dragover{border-color:var(--accent);background:rgba(0,212,255,0.05);}
+.dropzone-icon{font-size:20px;margin-bottom:6px;}
+.dropzone-text{color:var(--muted);font-size:10px;line-height:1.7;}
+.dropzone-text strong{color:var(--accent);display:block;margin-bottom:2px;font-size:11px;}
+#fileInput{display:none;}
+.progress-bar{height:2px;background:var(--border);margin-top:8px;border-radius:1px;overflow:hidden;}
+.progress-fill{height:100%;background:var(--accent);width:0%;transition:width .3s;}
+.files-list{flex:1;overflow-y:auto;padding:6px;}
+.file-item{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:3px;margin-bottom:3px;border:1px solid transparent;}
+.file-browser-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.file-item-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--muted);}
+.file-item-count{font-size:10px;color:var(--muted);background:var(--surface2);padding:1px 5px;border-radius:2px;}
+
+/* CONTENT */
+.content{display:flex;flex-direction:column;overflow:hidden;}
+
+/* TABS */
+.tabs{display:flex;border-bottom:1px solid var(--border);background:var(--surface);padding:0 16px;}
+.tab{padding:10px 16px;font-size:11px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:all .15s;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;}
+.tab:hover{color:var(--text);}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab-icon{margin-right:5px;}
+
+/* TAB PANELS */
+.tab-panel{display:none;flex:1;flex-direction:column;overflow:hidden;}
+.tab-panel.active{display:flex;}
+
+/* TOOLBAR */
+.toolbar{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;background:var(--surface);flex-wrap:wrap;}
+.search-wrap{position:relative;flex:1;min-width:160px;}
+.search-icon{position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:11px;}
+input[type="text"]{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px 6px 26px;border-radius:3px;font-family:inherit;font-size:11px;outline:none;transition:border-color .2s;}
+input[type="text"]:focus{border-color:var(--accent);}
+select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:3px;font-family:inherit;font-size:11px;outline:none;cursor:pointer;}
+.btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:3px;font-family:inherit;font-size:10px;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.btn:hover{border-color:var(--accent);color:var(--accent);}
+.btn.primary{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700;}
+.btn.primary:hover{background:#00b8db;}
+.download-script-btn{width:100%;background:linear-gradient(135deg,var(--accent2),#d64520);color:#fff;border:none;padding:10px 12px;border-radius:4px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;text-transform:uppercase;letter-spacing:1px;box-shadow:0 2px 8px rgba(255,107,53,0.3);}
+.download-script-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(255,107,53,0.5);}
+.download-script-btn:active{transform:translateY(0);}
+
+/* TABLE */
+.table-wrap{flex:1;overflow:auto;}
+table{width:100%;border-collapse:collapse;}
+thead{position:sticky;top:0;z-index:10;}
+th{background:var(--surface);border-bottom:1px solid var(--border);padding:8px 14px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);white-space:nowrap;}
+td{padding:7px 14px;border-bottom:1px solid rgba(42,48,64,0.4);vertical-align:middle;}
+tr:hover td{background:rgba(255,255,255,0.02);}
+.browser-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:2px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;}
+.tag-chrome{background:rgba(66,133,244,0.15);color:#4285f4;}
+.tag-edge{background:rgba(0,120,212,0.15);color:#0078d4;}
+.tag-firefox{background:rgba(255,113,57,0.15);color:#ff7139;}
+.cell-muted{color:var(--muted);font-size:11px;}
+.cell-url{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px;color:var(--muted);font-size:11px;}
+.cell-url a{color:var(--muted);text-decoration:none;}
+.cell-url a:hover{color:var(--accent);}
+.cell-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;font-size:12px;}
+.badge{background:var(--surface2);border:1px solid var(--border);padding:1px 6px;border-radius:2px;font-size:10px;color:var(--muted);}
+
+/* FOOTER */
+.footer{padding:6px 16px;border-top:1px solid var(--border);background:var(--surface);display:flex;gap:12px;align-items:center;font-size:10px;color:var(--muted);}
+.footer strong{color:var(--text);}
+
+/* EMPTY STATE */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:var(--muted);}
+.empty-icon{font-size:40px;opacity:0.3;}
+.empty-text{font-size:11px;text-align:center;line-height:1.8;}
+
+/* DASHBOARD */
+.dashboard{flex:1;overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-content:start;}
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px;}
+.kpi-value{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--accent);line-height:1;}
+.kpi-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:4px;}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:6px;}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px;grid-column:span 2;}
+.chart-card.full{grid-column:span 4;}
+.chart-card.span3{grid-column:span 3;}
+.chart-title{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px;}
+.chart-wrap{position:relative;height:180px;}
+.top-list{display:flex;flex-direction:column;gap:6px;margin-top:4px;}
+.top-item{display:flex;align-items:center;gap:8px;}
+.top-item-bar-wrap{flex:1;height:4px;background:var(--surface2);border-radius:2px;overflow:hidden;}
+.top-item-bar{height:100%;border-radius:2px;transition:width .5s;}
+.top-item-label{font-size:10px;color:var(--text);min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.top-item-val{font-size:10px;color:var(--muted);min-width:30px;text-align:right;}
+.timeline-grid{display:grid;grid-template-columns:repeat(24,1fr);gap:2px;margin-top:8px;}
+.timeline-hour{height:40px;border-radius:2px;display:flex;align-items:flex-end;justify-content:center;position:relative;cursor:default;}
+.timeline-hour:hover::after{content:attr(data-tip);position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--border);padding:3px 7px;border-radius:2px;font-size:9px;white-space:nowrap;z-index:10;}
+.hour-label{font-size:8px;color:var(--muted);margin-top:4px;text-align:center;}
+.insight-list{display:flex;flex-direction:column;gap:8px;}
+.insight{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:10px 12px;font-size:11px;line-height:1.6;}
+.insight .i-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-bottom:4px;}
+.insight .i-val{color:var(--text);}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:var(--surface);}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:var(--muted);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="status-dot"></div>
+  <div class="logo">Browser<span>Forensics</span></div>
+  <div style="color:var(--muted);font-size:10px;margin-left:4px;">// Multi-source Analyzer</div>
+  <div class="header-stats">
+    <div class="stat-badge">Historial: <strong id="hCount">0</strong></div>
+    <div class="stat-badge">Cookies: <strong id="cCount">0</strong></div>
+    <div class="stat-badge">Descargas: <strong id="dCount">0</strong></div>
+    <div class="stat-badge">Búsquedas: <strong id="sCount">0</strong></div>
+    <div class="stat-badge">Archivos: <strong id="fCount">0</strong></div>
+  </div>
+</header>
+
+<div class="main">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Herramienta de recolección</div>
+      <button class="download-script-btn" onclick="downloadCollectorScript()">
+        ⬇️ Descargar Collector.ps1
+      </button>
+      <div style="margin-top:8px;font-size:9px;color:var(--muted);line-height:1.5;">
+        Script PowerShell para recolectar datos de navegadores en Windows
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Cargar archivos</div>
+      <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+        <div class="dropzone-icon">📂</div>
+        <div class="dropzone-text">
+          <strong>Arrastrá o hacé click</strong>
+          *_history · *_cookies · *_webdata<br>
+          *_formhistory · places.sqlite
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+      <input type="file" id="fileInput" multiple>
+    </div>
+    <div class="sidebar-label" style="padding:10px 12px 4px;">Archivos cargados</div>
+    <div class="files-list" id="filesList">
+      <div style="color:var(--muted);font-size:10px;padding:6px 8px;">Ningún archivo cargado</div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('history')"><span class="tab-icon">🌐</span>Historial</div>
+      <div class="tab" onclick="switchTab('cookies')"><span class="tab-icon">🍪</span>Cookies</div>
+      <div class="tab" onclick="switchTab('downloads')"><span class="tab-icon">⬇</span>Descargas</div>
+      <div class="tab" onclick="switchTab('searches')"><span class="tab-icon">🔍</span>Búsquedas</div>
+      <div class="tab" onclick="switchTab('analytics')"><span class="tab-icon">📊</span>Analytics</div>
+    </div>
+
+    <!-- HISTORIAL -->
+    <div class="tab-panel active" id="panel-history">
+      <div class="toolbar">
+        <div class="search-wrap"><span class="search-icon">🔍</span><input type="text" id="h-search" placeholder="Buscar URL o título..." oninput="renderHistory()"></div>
+        <select id="h-browser" onchange="renderHistory()"><option value="">Todos los navegadores</option><option>Chrome</option><option>Edge</option><option>Firefox</option></select>
+        <select id="h-user" onchange="renderHistory()"><option value="">Todos los usuarios</option></select>
+        <select id="h-sort" onchange="renderHistory()"><option value="date_desc">Más reciente</option><option value="date_asc">Más antiguo</option><option value="visits_desc">Más visitado</option></select>
+        <button class="btn primary" onclick="exportCSV('history')">⬇ CSV</button>
+      </div>
+      <div class="table-wrap" id="h-table"></div>
+      <div class="footer"><span>Mostrando: <strong id="h-shown">0</strong></span><span>|</span><span>Rango: <strong id="h-range">—</strong></span></div>
+    </div>
+
+    <!-- COOKIES -->
+    <div class="tab-panel" id="panel-cookies">
+      <div class="toolbar">
+        <div class="search-wrap"><span class="search-icon">🔍</span><input type="text" id="c-search" placeholder="Buscar dominio o nombre..." oninput="renderCookies()"></div>
+        <select id="c-browser" onchange="renderCookies()"><option value="">Todos los navegadores</option><option>Chrome</option><option>Edge</option><option>Firefox</option></select>
+        <select id="c-user" onchange="renderCookies()"><option value="">Todos los usuarios</option></select>
+        <button class="btn primary" onclick="exportCSV('cookies')">⬇ CSV</button>
+      </div>
+      <div class="table-wrap" id="c-table"></div>
+      <div class="footer"><span>Mostrando: <strong id="c-shown">0</strong></span></div>
+    </div>
+
+    <!-- DESCARGAS -->
+    <div class="tab-panel" id="panel-downloads">
+      <div class="toolbar">
+        <div class="search-wrap"><span class="search-icon">🔍</span><input type="text" id="d-search" placeholder="Buscar archivo o URL..." oninput="renderDownloads()"></div>
+        <select id="d-browser" onchange="renderDownloads()"><option value="">Todos los navegadores</option><option>Chrome</option><option>Edge</option><option>Firefox</option></select>
+        <select id="d-user" onchange="renderDownloads()"><option value="">Todos los usuarios</option></select>
+        <button class="btn primary" onclick="exportCSV('downloads')">⬇ CSV</button>
+      </div>
+      <div class="table-wrap" id="d-table"></div>
+      <div class="footer"><span>Mostrando: <strong id="d-shown">0</strong></span></div>
+    </div>
+
+    <!-- BÚSQUEDAS -->
+    <div class="tab-panel" id="panel-searches">
+      <div class="toolbar">
+        <div class="search-wrap"><span class="search-icon">🔍</span><input type="text" id="s-search" placeholder="Buscar término..." oninput="renderSearches()"></div>
+        <select id="s-browser" onchange="renderSearches()"><option value="">Todos los navegadores</option><option>Chrome</option><option>Edge</option><option>Firefox</option></select>
+        <select id="s-user" onchange="renderSearches()"><option value="">Todos los usuarios</option></select>
+        <button class="btn primary" onclick="exportCSV('searches')">⬇ CSV</button>
+      </div>
+      <div class="table-wrap" id="s-table"></div>
+      <div class="footer"><span>Mostrando: <strong id="s-shown">0</strong></span></div>
+    </div>
+
+    <!-- ANALYTICS -->
+    <div class="tab-panel" id="panel-analytics">
+      <div class="dashboard" id="dashboard">
+        <div class="empty-state" style="grid-column:span 4;height:300px;">
+          <div class="empty-icon">📊</div>
+          <div class="empty-text">Cargá archivos para ver el análisis</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let SQL = null;
+const DB = { history: [], cookies: [], downloads: [], searches: [] };
+let loadedFiles = [];
+let charts = {};
+
+initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${f}` })
+  .then(s => { SQL = s; });
+
+// ─── META DETECTION ───────────────────────────────────────────
+function detectMeta(filename) {
+  const f = filename.toLowerCase().replace(/\.sqlite|\.db$/i,'');
+  let browser = 'Desconocido', type = 'unknown';
+
+  if (f.includes('chrome')) browser = 'Chrome';
+  else if (f.includes('edge')) browser = 'Edge';
+  else if (f.includes('firefox') || f.includes('places') || f.includes('formhistory') || f.includes('cookies')) {
+    browser = 'Firefox';
+  }
+
+  if (f.includes('_history') || f === 'places') type = 'history';
+  else if (f.includes('_cookies') || f === 'cookies') type = 'cookies';
+  else if (f.includes('_webdata') || f === 'web data') type = 'webdata';
+  else if (f.includes('formhistory')) type = 'formhistory';
+  else if (f.includes('places')) type = 'history';
+
+  const parts = f.split('_');
+  const browserIdx = parts.findIndex(p => ['chrome','edge','firefox','places','formhistory','cookies'].includes(p));
+  const user = browserIdx > 0 ? parts.slice(0, browserIdx).join('_') : (parts[0] || 'unknown');
+
+  return { browser, type, user };
+}
+
+// ─── PARSERS ──────────────────────────────────────────────────
+function chromeTime(t) { return new Date(t / 1000 - 11644473600000); }
+function ffTime(t) { return new Date(t / 1000); }
+
+function parseHistory(db, meta) {
+  const r = [];
+  try {
+    if (meta.browser !== 'Firefox') {
+      const res = db.exec(`SELECT url,title,visit_count,last_visit_time FROM urls ORDER BY last_visit_time DESC`);
+      if (res.length) for (const row of res[0].values) {
+        r.push({ url: row[0], title: row[1]||'', visits: row[2]||0, date: chromeTime(row[3]), ...meta });
+      }
+    } else {
+      const res = db.exec(`SELECT p.url,p.title,p.visit_count,MAX(v.visit_date) FROM moz_places p LEFT JOIN moz_historyvisits v ON p.id=v.place_id WHERE p.visit_count>0 GROUP BY p.id ORDER BY MAX(v.visit_date) DESC`);
+      if (res.length) for (const row of res[0].values) {
+        r.push({ url: row[0], title: row[1]||'', visits: row[2]||0, date: ffTime(row[3]), ...meta });
+      }
+    }
+  } catch(e) {}
+  return r;
+}
+
+function parseCookies(db, meta) {
+  const r = [];
+  try {
+    if (meta.browser !== 'Firefox') {
+      const res = db.exec(`SELECT host_key,name,path,is_secure,expires_utc,last_access_utc FROM cookies ORDER BY last_access_utc DESC LIMIT 5000`);
+      if (res.length) for (const row of res[0].values) {
+        r.push({ domain: row[0], name: row[1], path: row[2], secure: row[3]?'Sí':'No', expires: chromeTime(row[4]), lastAccess: chromeTime(row[5]), ...meta });
+      }
+    } else {
+      const res = db.exec(`SELECT host,name,path,isSecure,expiry,lastAccessed FROM moz_cookies ORDER BY lastAccessed DESC LIMIT 5000`);
+      if (res.length) for (const row of res[0].values) {
+        r.push({ domain: row[0], name: row[1], path: row[2], secure: row[3]?'Sí':'No', expires: new Date(row[4]*1000), lastAccess: ffTime(row[5]), ...meta });
+      }
+    }
+  } catch(e) {}
+  return r;
+}
+
+function parseDownloads(db, meta) {
+  const r = [];
+  try {
+    if (meta.browser !== 'Firefox') {
+      const res = db.exec(`SELECT target_path,tab_url,total_bytes,start_time,end_time,state FROM downloads ORDER BY start_time DESC`);
+      if (res.length) for (const row of res[0].values) {
+        const states = {0:'En progreso',1:'Completo',2:'Cancelado',3:'Error'};
+        const fname = (row[0]||'').split('\\').pop().split('/').pop();
+        r.push({ filename: fname, path: row[0], url: row[1]||'', size: row[2]||0, startDate: chromeTime(row[3]), endDate: chromeTime(row[4]), state: states[row[5]]||'—', ...meta });
+      }
+    } else {
+      // Firefox: Intentar múltiples métodos
+      
+      // Método 1: moz_annos (Firefox antiguo)
+      try {
+        const res1 = db.exec(`SELECT p.url,a.content,a.dateAdded FROM moz_places p JOIN moz_annos a ON p.id=a.place_id JOIN moz_anno_attributes aa ON a.anno_attribute_id=aa.id WHERE aa.name='downloads/destinationFileName' ORDER BY a.dateAdded DESC`);
+        if (res1.length) for (const row of res1[0].values) {
+          r.push({ filename: row[1]||'', path: '', url: row[0]||'', size: 0, startDate: ffTime(row[2]), endDate: null, state: 'Completo', ...meta });
+        }
+      } catch(e) {}
+      
+      // Método 2: Buscar URLs con file:/// o .zip, .pdf, .exe, etc en el historial
+      if (r.length === 0) {
+        try {
+          const res2 = db.exec(`SELECT url, title, last_visit_date FROM moz_places WHERE url LIKE '%.zip%' OR url LIKE '%.pdf%' OR url LIKE '%.exe%' OR url LIKE '%.rar%' OR url LIKE '%.docx%' OR url LIKE '%.xlsx%' OR url LIKE '%.pptx%' OR url LIKE '%.jpg%' OR url LIKE '%.png%' OR url LIKE '%.mp4%' OR url LIKE '%.apk%' ORDER BY last_visit_date DESC`);
+          if (res2.length) for (const row of res2[0].values) {
+            const fname = (row[0]||'').split('/').pop().split('?')[0];
+            if (fname && fname.includes('.')) {
+              r.push({ filename: fname, path: '', url: row[0]||'', size: 0, startDate: ffTime(row[2]), endDate: null, state: 'Inferido', ...meta });
+            }
+          }
+        } catch(e) {}
+      }
+      
+      // Método 3: Verificar tabla moz_downloads si existe (Firefox muy nuevo)
+      if (r.length === 0) {
+        try {
+          const res3 = db.exec(`SELECT name, source, dateAdded FROM moz_downloads ORDER BY dateAdded DESC`);
+          if (res3.length) for (const row of res3[0].values) {
+            r.push({ filename: row[0]||'', path: '', url: row[1]||'', size: 0, startDate: ffTime(row[2]), endDate: null, state: 'Completo', ...meta });
+          }
+        } catch(e) {}
+      }
+    }
+  } catch(e) {}
+  return r;
+}
+
+function parseSearches(db, meta) {
+  const r = [];
+  try {
+    if (meta.browser !== 'Firefox') {
+      // keyword_search_terms table
+      const res = db.exec(`SELECT k.term, u.url, u.last_visit_time FROM keyword_search_terms k JOIN urls u ON k.url_id=u.id ORDER BY u.last_visit_time DESC`);
+      if (res.length) for (const row of res[0].values) {
+        r.push({ term: row[0], url: row[1]||'', date: chromeTime(row[2]), ...meta });
+      }
+    } else {
+      const res = db.exec(`SELECT fieldname, value, timesUsed, firstUsed, lastUsed FROM moz_formhistory ORDER BY lastUsed DESC`);
+      if (res.length) for (const row of res[0].values) {
+        r.push({ term: row[1], url: row[0]||'', date: ffTime(row[4]), uses: row[2]||0, ...meta });
+      }
+    }
+  } catch(e) {}
+  return r;
+}
+
+// ─── FILE LOADING ─────────────────────────────────────────────
+async function loadFile(file) {
+  if (!SQL) return;
+  const meta = detectMeta(file.name);
+  const buf = await file.arrayBuffer();
+  let db;
+  try { db = new SQL.Database(new Uint8Array(buf)); } catch(e) { return 0; }
+
+  let count = 0;
+  const isFF = meta.browser === 'Firefox';
+  const fname = file.name.toLowerCase();
+
+  // History
+  if (meta.type === 'history' || fname.includes('places')) {
+    const recs = parseHistory(db, { ...meta, source: file.name });
+    DB.history.push(...recs);
+    const dl = parseDownloads(db, { ...meta, source: file.name });
+    DB.downloads.push(...dl);
+    count += recs.length;
+  }
+  // Cookies
+  if (meta.type === 'cookies' || fname.includes('cookies')) {
+    const recs = parseCookies(db, { ...meta, type: 'cookies', source: file.name });
+    DB.cookies.push(...recs);
+    count += recs.length;
+  }
+  // Webdata (Chrome/Edge searches + downloads)
+  if (meta.type === 'webdata' || fname.includes('webdata')) {
+    const recs = parseSearches(db, { ...meta, type: 'searches', source: file.name });
+    DB.searches.push(...recs);
+    count += recs.length;
+  }
+  // Firefox formhistory
+  if (meta.type === 'formhistory' || fname.includes('formhistory')) {
+    const recs = parseSearches(db, { ...meta, browser: 'Firefox', type: 'searches', source: file.name });
+    DB.searches.push(...recs);
+    count += recs.length;
+  }
+
+  db.close();
+  return count;
+}
+
+async function handleFiles(files) {
+  const fill = document.getElementById('progressFill');
+  fill.style.width = '5%';
+  const arr = Array.from(files);
+  for (let i = 0; i < arr.length; i++) {
+    const c = await loadFile(arr[i]);
+    const m = detectMeta(arr[i].name);
+    loadedFiles.push({ name: arr[i].name, count: c, ...m });
+    fill.style.width = `${((i+1)/arr.length)*100}%`;
+  }
+  setTimeout(() => fill.style.width = '0%', 800);
+  renderFilesList();
+  updateFilters();
+  renderHistory();
+  renderCookies();
+  renderDownloads();
+  renderSearches();
+  renderAnalytics();
+  updateHeaderStats();
+}
+
+function updateHeaderStats() {
+  document.getElementById('hCount').textContent = DB.history.length;
+  document.getElementById('cCount').textContent = DB.cookies.length;
+  document.getElementById('dCount').textContent = DB.downloads.length;
+  document.getElementById('sCount').textContent = DB.searches.length;
+  document.getElementById('fCount').textContent = loadedFiles.length;
+}
+
+function renderFilesList() {
+  const el = document.getElementById('filesList');
+  if (!loadedFiles.length) { el.innerHTML = '<div style="color:var(--muted);font-size:10px;padding:6px 8px;">Ningún archivo cargado</div>'; return; }
+  const colors = { Chrome: '#4285f4', Edge: '#0078d4', Firefox: '#ff7139', Desconocido: '#888' };
+  el.innerHTML = loadedFiles.map(f => `<div class="file-item">
+    <div class="file-browser-dot" style="background:${colors[f.browser]||'#888'}"></div>
+    <div class="file-item-name" title="${f.name}">${f.name}</div>
+    <div class="file-item-count">${f.count}</div>
+  </div>`).join('');
+}
+
+function updateFilters() {
+  const users = [...new Set([...DB.history, ...DB.cookies, ...DB.downloads, ...DB.searches].map(r => r.user))].sort();
+  ['h-user','c-user','d-user','s-user'].forEach(id => {
+    const sel = document.getElementById(id);
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Todos los usuarios</option>' + users.map(u => `<option>${u}</option>`).join('');
+    sel.value = cur;
+  });
+}
+
+// ─── RENDER HELPERS ───────────────────────────────────────────
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtDate(d) { return (d && !isNaN(d)) ? d.toLocaleString('es-AR') : '—'; }
+function fmtSize(b) { if (!b) return '—'; if (b>1e9) return (b/1e9).toFixed(1)+' GB'; if (b>1e6) return (b/1e6).toFixed(1)+' MB'; return (b/1e3).toFixed(0)+' KB'; }
+function browserTag(b) {
+  const cls = b==='Chrome'?'tag-chrome':b==='Edge'?'tag-edge':'tag-firefox';
+  return `<span class="browser-tag ${cls}">${b}</span>`;
+}
+function applyFilters(data, searchId, browserId, userId) {
+  const q = document.getElementById(searchId)?.value.toLowerCase()||'';
+  const br = document.getElementById(browserId)?.value||'';
+  const usr = document.getElementById(userId)?.value||'';
+  return data.filter(r => {
+    if (br && r.browser !== br) return false;
+    if (usr && r.user !== usr) return false;
+    if (q) {
+      const hay = Object.values(r).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+// ─── RENDER TABS ──────────────────────────────────────────────
+function renderHistory() {
+  let data = applyFilters(DB.history, 'h-search', 'h-browser', 'h-user');
+  const sort = document.getElementById('h-sort')?.value || 'date_desc';
+  if (sort === 'date_desc') data.sort((a,b)=>b.date-a.date);
+  else if (sort === 'date_asc') data.sort((a,b)=>a.date-b.date);
+  else data.sort((a,b)=>b.visits-a.visits);
+
+  if (!data.length) { document.getElementById('h-table').innerHTML = emptyState('🌐','Sin registros de historial'); document.getElementById('h-shown').textContent=0; return; }
+
+  const rows = data.slice(0,5000).map(r => `<tr>
+    <td>${browserTag(r.browser)}</td>
+    <td class="cell-muted">${esc(r.user)}</td>
+    <td><div class="cell-title" title="${esc(r.title)}">${esc(r.title)||'<span style="color:var(--muted)">—</span>'}</div></td>
+    <td><div class="cell-url"><a href="${esc(r.url)}" target="_blank" title="${esc(r.url)}">${esc(r.url.replace(/^https?:\/\/(www\.)?/,'').substring(0,55))}</a></div></td>
+    <td class="cell-muted">${fmtDate(r.date)}</td>
+    <td><span class="badge">${r.visits}</span></td>
+  </tr>`).join('');
+
+  document.getElementById('h-table').innerHTML = `<table><thead><tr><th>Navegador</th><th>Usuario</th><th>Título</th><th>URL</th><th>Última visita</th><th>Visitas</th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('h-shown').textContent = data.length;
+  const valid = data.filter(r=>!isNaN(r.date)).map(r=>r.date);
+  if (valid.length) {
+    const mn = new Date(Math.min(...valid)), mx = new Date(Math.max(...valid));
+    document.getElementById('h-range').textContent = `${mn.toLocaleDateString('es-AR')} → ${mx.toLocaleDateString('es-AR')}`;
+  }
+}
+
+function renderCookies() {
+  let data = applyFilters(DB.cookies, 'c-search', 'c-browser', 'c-user');
+  document.getElementById('c-shown').textContent = data.length;
+  if (!data.length) { document.getElementById('c-table').innerHTML = emptyState('🍪','Sin cookies'); return; }
+  const rows = data.slice(0,5000).map(r => `<tr>
+    <td>${browserTag(r.browser)}</td>
+    <td class="cell-muted">${esc(r.user)}</td>
+    <td><div class="cell-title" title="${esc(r.domain)}">${esc(r.domain)}</div></td>
+    <td class="cell-muted">${esc(r.name)}</td>
+    <td class="cell-muted">${esc(r.path)}</td>
+    <td><span class="badge" style="color:${r.secure==='Sí'?'var(--accent3)':'var(--muted)'}">${r.secure==='Sí'?'🔒 Sí':'No'}</span></td>
+    <td class="cell-muted">${fmtDate(r.lastAccess)}</td>
+    <td class="cell-muted">${fmtDate(r.expires)}</td>
+  </tr>`).join('');
+  document.getElementById('c-table').innerHTML = `<table><thead><tr><th>Navegador</th><th>Usuario</th><th>Dominio</th><th>Nombre</th><th>Path</th><th>Secure</th><th>Último acceso</th><th>Expira</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderDownloads() {
+  let data = applyFilters(DB.downloads, 'd-search', 'd-browser', 'd-user');
+  data.sort((a,b)=>b.startDate-a.startDate);
+  document.getElementById('d-shown').textContent = data.length;
+  if (!data.length) { document.getElementById('d-table').innerHTML = emptyState('⬇','Sin descargas'); return; }
+  const rows = data.slice(0,2000).map(r => `<tr>
+    <td>${browserTag(r.browser)}</td>
+    <td class="cell-muted">${esc(r.user)}</td>
+    <td><div class="cell-title" title="${esc(r.filename)}">${esc(r.filename)||'—'}</div></td>
+    <td><div class="cell-url"><a href="${esc(r.url)}" target="_blank" title="${esc(r.url)}">${esc(r.url.substring(0,50))}</a></div></td>
+    <td class="cell-muted">${fmtSize(r.size)}</td>
+    <td class="cell-muted">${fmtDate(r.startDate)}</td>
+    <td><span class="badge" style="color:${r.state==='Completo'?'var(--accent3)':'var(--accent2)'}">${r.state}</span></td>
+  </tr>`).join('');
+  document.getElementById('d-table').innerHTML = `<table><thead><tr><th>Navegador</th><th>Usuario</th><th>Archivo</th><th>URL origen</th><th>Tamaño</th><th>Fecha</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderSearches() {
+  let data = applyFilters(DB.searches, 's-search', 's-browser', 's-user');
+  data.sort((a,b)=>b.date-a.date);
+  document.getElementById('s-shown').textContent = data.length;
+  if (!data.length) { document.getElementById('s-table').innerHTML = emptyState('🔍','Sin búsquedas guardadas'); return; }
+  const rows = data.slice(0,3000).map(r => `<tr>
+    <td>${browserTag(r.browser)}</td>
+    <td class="cell-muted">${esc(r.user)}</td>
+    <td style="font-size:13px;font-weight:600;">${esc(r.term)}</td>
+    <td class="cell-muted">${fmtDate(r.date)}</td>
+    ${r.uses ? `<td><span class="badge">${r.uses}</span></td>` : '<td>—</td>'}
+  </tr>`).join('');
+  document.getElementById('s-table').innerHTML = `<table><thead><tr><th>Navegador</th><th>Usuario</th><th>Término buscado</th><th>Fecha</th><th>Usos</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function emptyState(icon, msg) {
+  return `<div class="empty-state"><div class="empty-icon">${icon}</div><div class="empty-text">${msg}</div></div>`;
+}
+
+// ─── ANALYTICS ────────────────────────────────────────────────
+function renderAnalytics() {
+  if (!DB.history.length && !DB.cookies.length) return;
+
+  // Destroy old charts
+  Object.values(charts).forEach(c => { try { c.destroy(); } catch(e){} });
+  charts = {};
+
+  const h = DB.history;
+  const totalVisits = h.reduce((a,r)=>a+r.visits,0);
+  const uniqueDomains = new Set(h.map(r => { try { return new URL(r.url).hostname; } catch(e){return r.url;} })).size;
+  const validDates = h.filter(r=>!isNaN(r.date)).map(r=>r.date);
+  const dateRange = validDates.length ? Math.round((Math.max(...validDates)-Math.min(...validDates))/(1000*60*60*24)) : 0;
+
+  // Browser distribution
+  const byBrowser = {};
+  h.forEach(r => { byBrowser[r.browser] = (byBrowser[r.browser]||0) + 1; });
+
+  // Top domains
+  const domainCount = {};
+  h.forEach(r => {
+    try { const d = new URL(r.url).hostname.replace('www.',''); domainCount[d]=(domainCount[d]||0)+r.visits; }
+    catch(e){}
+  });
+  const topDomains = Object.entries(domainCount).sort((a,b)=>b[1]-a[1]).slice(0,10);
+
+  // Activity by hour
+  const byHour = Array(24).fill(0);
+  h.forEach(r => { if(!isNaN(r.date)) byHour[r.date.getHours()]++; });
+  const maxHour = Math.max(...byHour);
+  const peakHour = byHour.indexOf(maxHour);
+
+  // Activity by day of week
+  const byDay = Array(7).fill(0);
+  const dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  h.forEach(r => { if(!isNaN(r.date)) byDay[r.date.getDay()]++; });
+
+  // Users
+  const byUser = {};
+  h.forEach(r => { byUser[r.user]=(byUser[r.user]||0)+1; });
+
+  const dash = document.getElementById('dashboard');
+  dash.innerHTML = `
+    <!-- KPIs -->
+    <div class="kpi-card">
+      <div class="kpi-value">${h.length.toLocaleString()}</div>
+      <div class="kpi-label">URLs únicas</div>
+      <div class="kpi-sub">${totalVisits.toLocaleString()} visitas totales</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">${uniqueDomains.toLocaleString()}</div>
+      <div class="kpi-label">Dominios únicos</div>
+      <div class="kpi-sub">${topDomains[0]?`Top: ${topDomains[0][0]}`:'—'}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">${DB.downloads.length}</div>
+      <div class="kpi-label">Descargas</div>
+      <div class="kpi-sub">${DB.cookies.length.toLocaleString()} cookies</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">${dateRange}</div>
+      <div class="kpi-label">Días de actividad</div>
+      <div class="kpi-sub">${DB.searches.length} búsquedas guardadas</div>
+    </div>
+
+    <!-- Browser pie + User bar -->
+    <div class="chart-card">
+      <div class="chart-title">Distribución por navegador</div>
+      <div class="chart-wrap"><canvas id="ch-browser"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Actividad por usuario</div>
+      <div class="chart-wrap"><canvas id="ch-user"></canvas></div>
+    </div>
+
+    <!-- Hourly heatmap -->
+    <div class="chart-card full">
+      <div class="chart-title">Actividad por hora del día</div>
+      <div class="timeline-grid" id="hourGrid"></div>
+      <div class="timeline-grid" id="hourLabels"></div>
+    </div>
+
+    <!-- Day of week -->
+    <div class="chart-card">
+      <div class="chart-title">Actividad por día de semana</div>
+      <div class="chart-wrap"><canvas id="ch-day"></canvas></div>
+    </div>
+
+    <!-- Top domains -->
+    <div class="chart-card span3">
+      <div class="chart-title">Top 10 dominios (por visitas)</div>
+      <div class="top-list" id="topDomains"></div>
+    </div>
+
+    <!-- Insights -->
+    <div class="chart-card full">
+      <div class="chart-title">Insights clave</div>
+      <div class="insight-list" id="insights"></div>
+    </div>
+  `;
+
+  // Browser chart
+  charts.browser = new Chart(document.getElementById('ch-browser'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(byBrowser),
+      datasets: [{ data: Object.values(byBrowser), backgroundColor: ['#4285f4','#0078d4','#ff7139','#888'], borderWidth: 0 }]
+    },
+    options: { plugins: { legend: { labels: { color: '#5a6a7a', font: { family: 'JetBrains Mono', size: 10 } } } }, cutout: '65%' }
+  });
+
+  // User chart
+  const userEntries = Object.entries(byUser).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  charts.user = new Chart(document.getElementById('ch-user'), {
+    type: 'bar',
+    data: {
+      labels: userEntries.map(e=>e[0]),
+      datasets: [{ data: userEntries.map(e=>e[1]), backgroundColor: '#00d4ff44', borderColor: '#00d4ff', borderWidth: 1 }]
+    },
+    options: { plugins:{legend:{display:false}}, scales:{ x:{ticks:{color:'#5a6a7a',font:{family:'JetBrains Mono',size:9}}}, y:{ticks:{color:'#5a6a7a',font:{family:'JetBrains Mono',size:9}},grid:{color:'#2a3040'}} } }
+  });
+
+  // Hour heatmap
+  const hg = document.getElementById('hourGrid');
+  const hl = document.getElementById('hourLabels');
+  byHour.forEach((v,i) => {
+    const intensity = maxHour ? v/maxHour : 0;
+    const bar = document.createElement('div');
+    bar.className = 'timeline-hour';
+    bar.setAttribute('data-tip', `${i}:00 — ${v} visitas`);
+    bar.style.background = `rgba(0,212,255,${0.05+intensity*0.85})`;
+    bar.style.height = '40px';
+    hg.appendChild(bar);
+    const lbl = document.createElement('div');
+    lbl.className = 'hour-label';
+    lbl.textContent = i%3===0?`${i}h`:'';
+    hl.appendChild(lbl);
+  });
+
+  // Day of week chart
+  charts.day = new Chart(document.getElementById('ch-day'), {
+    type: 'radar',
+    data: {
+      labels: dayNames,
+      datasets: [{ data: byDay, backgroundColor: 'rgba(255,107,53,0.15)', borderColor: '#ff6b35', borderWidth: 1.5, pointBackgroundColor: '#ff6b35', pointRadius: 3 }]
+    },
+    options: { plugins:{legend:{display:false}}, scales:{ r:{ ticks:{display:false}, grid:{color:'#2a3040'}, pointLabels:{color:'#5a6a7a',font:{family:'JetBrains Mono',size:10}} } } }
+  });
+
+  // Top domains
+  const maxVal = topDomains[0]?.[1]||1;
+  document.getElementById('topDomains').innerHTML = topDomains.map((([d,v],i) => `
+    <div class="top-item">
+      <div class="top-item-label">${i+1}. ${d}</div>
+      <div class="top-item-bar-wrap"><div class="top-item-bar" style="width:${(v/maxVal*100).toFixed(0)}%;background:${i<3?'var(--accent)':'var(--border)'}"></div></div>
+      <div class="top-item-val">${v}</div>
+    </div>`)).join('');
+
+  // Insights
+  const mostActive = Object.entries(byUser).sort((a,b)=>b[1]-a[1])[0];
+  const mostUsedBrowser = Object.entries(byBrowser).sort((a,b)=>b[1]-a[1])[0];
+  const topSearchTerm = DB.searches[0]?.term;
+  const recentDownload = DB.downloads.sort((a,b)=>b.startDate-a.startDate)[0];
+  const insightsEl = document.getElementById('insights');
+  insightsEl.innerHTML = [
+    mostActive ? `<div class="insight"><div class="i-label">Usuario más activo</div><div class="i-val">${mostActive[0]} — ${mostActive[1].toLocaleString()} páginas visitadas</div></div>` : '',
+    mostUsedBrowser ? `<div class="insight"><div class="i-label">Navegador predominante</div><div class="i-val">${mostUsedBrowser[0]} — ${((mostUsedBrowser[1]/h.length)*100).toFixed(1)}% del historial</div></div>` : '',
+    `<div class="insight"><div class="i-label">Hora pico de actividad</div><div class="i-val">${peakHour}:00 hs — ${maxHour} accesos registrados</div></div>`,
+    topDomains[0] ? `<div class="insight"><div class="i-label">Sitio más visitado</div><div class="i-val">${topDomains[0][0]} — ${topDomains[0][1].toLocaleString()} visitas</div></div>` : '',
+    topSearchTerm ? `<div class="insight"><div class="i-label">Última búsqueda registrada</div><div class="i-val">"${esc(topSearchTerm)}"</div></div>` : '',
+    recentDownload ? `<div class="insight"><div class="i-label">Última descarga</div><div class="i-val">${esc(recentDownload.filename||recentDownload.url)} — ${fmtDate(recentDownload.startDate)}</div></div>` : '',
+  ].filter(Boolean).join('');
+}
+
+// ─── TAB SWITCHING ────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    const names = ['history','cookies','downloads','searches','analytics'];
+    t.classList.toggle('active', names[i]===name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(`panel-${name}`).classList.add('active');
+}
+
+// ─── EXPORT ───────────────────────────────────────────────────
+function exportCSV(type) {
+  const data = DB[type];
+  if (!data.length) return;
+  const keys = Object.keys(data[0]).filter(k=>!['source','type'].includes(k));
+  const rows = [keys.join(','), ...data.map(r => keys.map(k => `"${String(r[k]||'').replace(/"/g,'""')}"`).join(','))];
+  const blob = new Blob([rows.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${type}_export.csv`; a.click();
+}
+
+// ─── DRAG & DROP ──────────────────────────────────────────────
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e=>{e.preventDefault();dz.classList.add('dragover');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');handleFiles(e.dataTransfer.files);});
+document.getElementById('fileInput').addEventListener('change',e=>handleFiles(e.target.files));
+
+// ─── DOWNLOAD COLLECTOR SCRIPT (EMBEDDED) ─────────────────────
+function downloadCollectorScript() {
+  const scriptContent = `# ============================================================
+#  Browser Forensics Collector
+#  Recolecta: historial, cookies, descargas, búsquedas
+#  Navegadores: Chrome, Edge, Firefox
+# ============================================================
+
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$dest = "C:\\Temp\\browser_forensics_$timestamp"
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+
+Write-Host "\`n[*] Browser Forensics Collector" -ForegroundColor Cyan
+Write-Host "[*] Destino: $dest" -ForegroundColor Cyan
+Write-Host "[*] Inicio: $(Get-Date)\`n" -ForegroundColor Cyan
+
+$users = Get-ChildItem C:\\Users -Directory | Where-Object { $_.Name -notin @('Public','Default','Default User','All Users') }
+
+foreach ($userDir in $users) {
+    $user = $userDir.Name
+    $base = $userDir.FullName
+    Write-Host "[+] Usuario: $user" -ForegroundColor Yellow
+
+    # ----------------------------------------------------------
+    # CHROME
+    # ----------------------------------------------------------
+    $chromeBase = "$base\\AppData\\Local\\Google\\Chrome\\User Data"
+    if (Test-Path $chromeBase) {
+        $profiles = @("Default") + (Get-ChildItem $chromeBase -Directory | Where-Object { $_.Name -match "^Profile" } | Select-Object -ExpandProperty Name)
+        
+        foreach ($profile in $profiles) {
+            $profilePath = "$chromeBase\\$profile"
+            if (-not (Test-Path $profilePath)) { continue }
+
+            $suffix = if ($profile -eq "Default") { "" } else { "_$profile" }
+            $tag = "\${user}_chrome\${suffix}"
+
+            Write-Host "  [Chrome] Perfil: $profile" -ForegroundColor Gray
+
+            # Historial
+            $src = "$profilePath\\History"
+            if (Test-Path $src) {
+                try { Copy-Item $src "$dest\\\${tag}_history" -ErrorAction Stop; Write-Host "    -> history OK" -ForegroundColor Green }
+                catch { 
+                    & esentutl /y "$src" /d "$dest\\\${tag}_history" /o 2>$null
+                    Write-Host "    -> history (esentutl)" -ForegroundColor Green
+                }
+            }
+
+            # Cookies
+            $src = "$profilePath\\Network\\Cookies"
+            if (-not (Test-Path $src)) { $src = "$profilePath\\Cookies" }
+            if (Test-Path $src) {
+                try { Copy-Item $src "$dest\\\${tag}_cookies" -ErrorAction Stop; Write-Host "    -> cookies OK" -ForegroundColor Green }
+                catch {
+                    & esentutl /y "$src" /d "$dest\\\${tag}_cookies" /o 2>$null
+                    Write-Host "    -> cookies (esentutl)" -ForegroundColor Green
+                }
+            }
+
+            # Descargas (están en History, tabla downloads - se copia junto con history)
+            # Búsquedas - Web Data (contiene search terms y autofill)
+            $src = "$profilePath\\Web Data"
+            if (Test-Path $src) {
+                try { Copy-Item $src "$dest\\\${tag}_webdata" -ErrorAction Stop; Write-Host "    -> webdata OK" -ForegroundColor Green }
+                catch {
+                    & esentutl /y "$src" /d "$dest\\\${tag}_webdata" /o 2>$null
+                    Write-Host "    -> webdata (esentutl)" -ForegroundColor Green
+                }
+            }
+        }
+    }
+
+    # ----------------------------------------------------------
+    # EDGE
+    # ----------------------------------------------------------
+    $edgeBase = "$base\\AppData\\Local\\Microsoft\\Edge\\User Data"
+    if (Test-Path $edgeBase) {
+        $profiles = @("Default") + (Get-ChildItem $edgeBase -Directory | Where-Object { $_.Name -match "^Profile" } | Select-Object -ExpandProperty Name)
+
+        foreach ($profile in $profiles) {
+            $profilePath = "$edgeBase\\$profile"
+            if (-not (Test-Path $profilePath)) { continue }
+
+            $suffix = if ($profile -eq "Default") { "" } else { "_$profile" }
+            $tag = "\${user}_edge\${suffix}"
+
+            Write-Host "  [Edge] Perfil: $profile" -ForegroundColor Gray
+
+            # Historial
+            $src = "$profilePath\\History"
+            if (Test-Path $src) {
+                try { Copy-Item $src "$dest\\\${tag}_history" -ErrorAction Stop; Write-Host "    -> history OK" -ForegroundColor Green }
+                catch {
+                    & esentutl /y "$src" /d "$dest\\\${tag}_history" /o 2>$null
+                    Write-Host "    -> history (esentutl)" -ForegroundColor Green
+                }
+            }
+
+            # Cookies
+            $src = "$profilePath\\Network\\Cookies"
+            if (-not (Test-Path $src)) { $src = "$profilePath\\Cookies" }
+            if (Test-Path $src) {
+                try { Copy-Item $src "$dest\\\${tag}_cookies" -ErrorAction Stop; Write-Host "    -> cookies OK" -ForegroundColor Green }
+                catch {
+                    & esentutl /y "$src" /d "$dest\\\${tag}_cookies" /o 2>$null
+                    Write-Host "    -> cookies (esentutl)" -ForegroundColor Green
+                }
+            }
+
+            # Web Data
+            $src = "$profilePath\\Web Data"
+            if (Test-Path $src) {
+                try { Copy-Item $src "$dest\\\${tag}_webdata" -ErrorAction Stop; Write-Host "    -> webdata OK" -ForegroundColor Green }
+                catch {
+                    & esentutl /y "$src" /d "$dest\\\${tag}_webdata" /o 2>$null
+                    Write-Host "    -> webdata (esentutl)" -ForegroundColor Green
+                }
+            }
+        }
+    }
+
+    # ----------------------------------------------------------
+    # FIREFOX
+    # ----------------------------------------------------------
+    $ffBase = "$base\\AppData\\Roaming\\Mozilla\\Firefox\\Profiles"
+    if (Test-Path $ffBase) {
+        $ffProfiles = Get-ChildItem $ffBase -Directory
+
+        foreach ($ffProfile in $ffProfiles) {
+            $profilePath = $ffProfile.FullName
+            $profileName = $ffProfile.Name
+            $tag = "\${user}_firefox_\${profileName}"
+
+            Write-Host "  [Firefox] Perfil: $profileName" -ForegroundColor Gray
+
+            $filesToCopy = @(
+                @{ src = "places.sqlite";      dst = "\${tag}_history"   },  # historial + descargas
+                @{ src = "cookies.sqlite";     dst = "\${tag}_cookies"   },  # cookies
+                @{ src = "formhistory.sqlite"; dst = "\${tag}_formhistory" }, # búsquedas y formularios
+                @{ src = "downloads.sqlite";   dst = "\${tag}_downloads" }   # descargas (si existe)
+            )
+
+            foreach ($item in $filesToCopy) {
+                $src = "$profilePath\\$($item.src)"
+                if (Test-Path $src) {
+                    try { 
+                        Copy-Item $src "$dest\\$($item.dst)" -ErrorAction Stop
+                        Write-Host "    -> $($item.src) OK" -ForegroundColor Green
+                    } catch {
+                        Write-Host "    -> $($item.src) SKIP (en uso)" -ForegroundColor DarkYellow
+                    }
+                }
+            }
+        }
+    }
+}
+
+# ----------------------------------------------------------
+# COMPRIMIR
+# ----------------------------------------------------------
+Write-Host "\`n[*] Comprimiendo..." -ForegroundColor Cyan
+$zipPath = "C:\\Temp\\browser_forensics_$timestamp.zip"
+
+try {
+    Compress-Archive -Path "$dest\\*" -DestinationPath $zipPath -Force
+    $size = [math]::Round((Get-Item $zipPath).Length / 1MB, 2)
+    Write-Host "[+] ZIP generado: $zipPath ($size MB)" -ForegroundColor Green
+} catch {
+    Write-Host "[-] Error al comprimir: $_" -ForegroundColor Red
+}
+
+# Limpiar carpeta temporal
+Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue
+
+Write-Host "\`n[*] Archivos recolectados:" -ForegroundColor Cyan
+Write-Host "    Historial   -> *_history    (Chrome/Edge: History.db | Firefox: places.sqlite)" -ForegroundColor Gray
+Write-Host "    Cookies     -> *_cookies    (Chrome/Edge: Cookies.db | Firefox: cookies.sqlite)" -ForegroundColor Gray
+Write-Host "    Búsquedas   -> *_webdata    (Chrome/Edge: Web Data  | Firefox: formhistory.sqlite)" -ForegroundColor Gray
+Write-Host "    Descargas   -> incluidas en *_history (tabla downloads) y places.sqlite" -ForegroundColor Gray
+Write-Host "\`n[DONE] Fin: $(Get-Date)\`n" -ForegroundColor Cyan`;
+
+  // Crear blob y descargar
+  const blob = new Blob([scriptContent], { type: 'text/plain;charset=utf-8' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = url;
+  a.download = 'browser_forensics_collector.ps1';
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+}
+</script>
+</body>
+</html>
