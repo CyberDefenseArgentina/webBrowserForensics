@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Lupa base -->
+  <circle cx="75" cy="75" r="40" fill="none" stroke="black" stroke-width="4"/>
+  
+  <!-- Mango de la lupa -->
+  <line x1="105" y1="105" x2="140" y2="140" stroke="black" stroke-width="4" stroke-linecap="round"/>
+  
+  <!-- Elementos dentro de la lupa representando búsqueda/análisis -->
+  <circle cx="75" cy="75" r="20" fill="none" stroke="black" stroke-width="2" stroke-dasharray="4,4"/>
+  
+  <!-- Puntos de escaneo -->
+  <circle cx="75" cy="60" r="3" fill="black"/>
+  <circle cx="85" cy="75" r="3" fill="black"/>
+  <circle cx="75" cy="90" r="3" fill="black"/>
+  <circle cx="65" cy="75" r="3" fill="black"/>
+  
+  <!-- Red/conexión indicando mapeo -->
+  <line x1="75" y1="60" x2="85" y2="75" stroke="black" stroke-width="1.5"/>
+  <line x1="85" y1="75" x2="75" y2="90" stroke="black" stroke-width="1.5"/>
+  <line x1="75" y1="90" x2="65" y2="75" stroke="black" stroke-width="1.5"/>
+  <line x1="65" y1="75" x2="75" y2="60" stroke="black" stroke-width="1.5"/>
+  
+  <!-- Ondas de radar/escaneo -->
+  <path d="M 145 55 Q 155 65 155 75" fill="none" stroke="black" stroke-width="2" stroke-linecap="round"/>
+  <path d="M 155 55 Q 170 65 170 75" fill="none" stroke="black" stroke-width="2" stroke-linecap="round"/>
+  <path d="M 165 55 Q 185 65 185 75" fill="none" stroke="black" stroke-width="2" stroke-linecap="round"/>
+</svg>

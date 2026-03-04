@@ -1,0 +1,52 @@
+# Archivos de prueba y temporales
+*.zip
+*.db
+*.sqlite
+*_history
+*_cookies
+*_webdata
+*_formhistory
+*_downloads
+browser_forensics_*
+
+# Outputs de testing
+test/
+temp/
+output/
+
+# Logs
+*.log
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.directory
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Datos sensibles (nunca commitear!)
+*_forensics_*.zip
+C:/Temp/
+
+# Node modules (si decides agregar tooling)
+node_modules/
+package-lock.json

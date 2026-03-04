@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Objetivo/target principal -->
+  <circle cx="100" cy="100" r="50" fill="none" stroke="black" stroke-width="4"/>
+  <circle cx="100" cy="100" r="35" fill="none" stroke="black" stroke-width="3"/>
+  <circle cx="100" cy="100" r="20" fill="none" stroke="black" stroke-width="3"/>
+  <circle cx="100" cy="100" r="8" fill="black"/>
+  
+  <!-- Flechas de ataque convergiendo al objetivo -->
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="black"/>
+    </marker>
+  </defs>
+  
+  <!-- Flecha desde arriba izquierda -->
+  <line x1="40" y1="40" x2="70" y2="70" stroke="black" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  
+  <!-- Flecha desde arriba derecha -->
+  <line x1="160" y1="40" x2="130" y2="70" stroke="black" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  
+  <!-- Flecha desde abajo -->
+  <line x1="100" y1="180" x2="100" y2="155" stroke="black" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+</svg>
