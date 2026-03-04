@@ -11,7 +11,7 @@
 ## 📋 Descripción
 
 **Browser Forensics Toolkit** es un conjunto de herramientas diseñadas para análisis forense digital, permitiendo la extracción y visualización de datos de navegadores web de forma no invasiva y forense.
-Solo necesita ejecutar el colector (browserforensics.ps1) y el visualizador (browserforensics.html)
+Solo necesita ejecutar el colector (browser_forensics_viewer.ps1) y el visualizador (browser_forensics_viewer.html)
 
 ### 🎯 Casos de Uso
 
