@@ -275,14 +275,6 @@ Las contribuciones son bienvenidas! Por favor:
 
 Este proyecto está bajo la licencia **MIT** - ver el archivo [LICENSE](LICENSE) para más detalles.
 
----
-
-## 👤 Autor
-
-**Equipo de Ciberseguridad**
-
-- 🔗 GitHub: [@TU-USUARIO](https://github.com/TU-USUARIO)
-- 📧 Email: tu-email@ejemplo.com
 
 ---
 
